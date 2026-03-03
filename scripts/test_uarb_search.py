@@ -22,7 +22,7 @@ async def download_from_modal(page, download_dir):
         # 1. Wait for modal to be visible - if it doesn't appear quickly,
         # it usually means the file is invalid/missing on FileMaker's end.
         modal = page.locator('.fm-modal-dialog')
-        await modal.wait_for(state="visible", timeout=500)
+        await modal.wait_for(state="visible", timeout=5000)
         
         # 2. Use page.expect_download() context manager
         # 3. Click the button with class .fm-download-button
@@ -112,8 +112,21 @@ async def run_uarb_search(matter_id, doc_type):
             processed_ids = set()   # Track button IDs already handled
             consecutive_empty_scrolls = 0  # End-of-list guard
             MAX_EMPTY_SCROLLS = 5          # Stop after 5 scrolls with no new buttons
+            current_scroll_top = 0         # Track accumulated scroll position
 
             while downloaded_count < MAX_DOWNLOADS:
+                # --- Guard: ensure no modal curtain is blocking the grid before each iteration ---
+                try:
+                    curtain = page.locator(".v-window-modalitycurtain")
+                    if await curtain.is_visible():
+                        # Try to close via the primary button if it's still showing
+                        close_btn = page.locator(".v-slot-primary .v-button-primary")
+                        if await close_btn.is_visible():
+                            await close_btn.click()
+                        await curtain.wait_for(state="hidden", timeout=3000)
+                except Exception:
+                    pass  # Curtain wasn't present or already dismissed
+
                 # --- Scan: find all currently rendered "GO GET IT" buttons ---
                 buttons = await page.get_by_role("button", name="GO GET IT").all()
 
@@ -133,17 +146,35 @@ async def run_uarb_search(matter_id, doc_type):
                     consecutive_empty_scrolls = 0  # Reset miss counter on any new find
 
                     print(f"[{downloaded_count + 1}] Clicking 'GO GET IT' (id={btn_id})...")
-                    await btn.click(delay=100)
+                    # Dispatch a full mousedown→mouseup→click sequence via JS.
+                    # - force=True was tried but fails when the element is outside the browser
+                    #   viewport (Vaadin virtualizes rows below the visible grid fold).
+                    # - JS bare .click() was tried but FileMaker ignores it (listens on mousedown).
+                    # - This approach has no viewport or hit-test requirements and includes
+                    #   mousedown/mouseup which Vaadin's button handler actually responds to.
+                    await page.evaluate("""
+                        (id) => {
+                            const el = document.getElementById(id);
+                            if (!el) return;
+                            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                                el.dispatchEvent(new MouseEvent(type, {
+                                    bubbles: true, cancelable: true,
+                                    view: window, buttons: 1
+                                }));
+                            });
+                        }
+                    """, btn_id)
 
                     # Download the file from the modal
                     result = await download_from_modal(page, download_dir)
 
-                    # Defensively dismiss any residual modal/overlay before continuing
+                    # Defensively dismiss any residual modal/overlay before continuing.
+                    # Use a longer timeout here — 500ms was too tight for the close animation.
                     try:
                         close_btn = page.locator(".v-slot-primary .v-button-primary")
                         if await close_btn.is_visible():
                             await close_btn.click()
-                        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=500)
+                        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=3000)
                     except Exception:
                         pass  # Modal was already gone, continue
 
@@ -160,17 +191,26 @@ async def run_uarb_search(matter_id, doc_type):
                         print(f"No new rows after {MAX_EMPTY_SCROLLS} consecutive scrolls. End of list.")
                         break
 
-                    print(f"No new buttons found (miss #{consecutive_empty_scrolls}). Scrolling via mouse wheel...")
+                    print(f"No new buttons found (miss #{consecutive_empty_scrolls}). Scrolling via JS scrollTop...")
 
-                    # .v-grid-scroller-vertical has width: 0px — it cannot receive pointer events.
-                    # Instead, hover over the visible table wrapper and send a real wheel event.
-                    # FileMaker/Vaadin listens for wheel/scroll events on the visible container,
-                    # not direct scrollTop mutations on the zero-width scroller element.
-                    table_wrapper = page.locator(".v-grid-tablewrapper")
-                    await table_wrapper.hover()
-                    await page.mouse.wheel(0, 200)  # Scroll down ~3 rows (68px each)
+                    # .v-grid-scroller-vertical has width: 0px, so Playwright's mouse.wheel()
+                    # and hover-based wheel events cannot hit it / are ignored by Vaadin.
+                    # The correct approach: directly mutate scrollTop on the internal scroller
+                    # element via JS and dispatch a 'scroll' event so Vaadin's virtual row
+                    # engine detects the change and fetches the next batch of rows.
+                    SCROLL_STEP = 204  # 3 rows × 68px each
+                    current_scroll_top += SCROLL_STEP
+                    await page.evaluate("""
+                        (scrollTop) => {
+                            const scroller = document.querySelector('.v-grid-scroller-vertical');
+                            if (scroller) {
+                                scroller.scrollTop = scrollTop;
+                                scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+                            }
+                        }
+                    """, current_scroll_top)
 
-                    # Wait for FileMaker to fetch and render the new rows
+                    # Wait for Vaadin to fetch and render the new rows
                     await page.wait_for_timeout(1500)
 
             print(f"Finished. Downloaded {downloaded_count} file(s) to '{download_dir}'.")
