@@ -1,6 +1,22 @@
 # Design Logs / Thought Process while working on this project
 
 
+## SEN-4_website-interaction
+
+so i sent gemini a bunch of information regarding the ids of specific buttons and such.
+
+i guess no i shall send it into antigravity to figure out how to implement it quickly using playwrite i think? 
+question: why not Selenium?
+
+because it doesn't matter what i pick. ai will make it easy enough to use.
+
+Will update later when finished implementing base.
+
+
+
+
+
+
 ## Sen-3_email-filtering
 
 I'm wondering if I should just write a non LLM dependent approach...
