@@ -41,9 +41,10 @@ def process_email_job(email_data: dict) -> None:
         email_data: Dict produced by email_filtering.process_and_filter_email().
                     Must contain: matter_id, category, sender.
     """
-    matter_id = email_data.get("matter_id", "UNKNOWN")
-    category  = email_data.get("category", "UNKNOWN")
-    sender    = email_data.get("sender", "")
+    matter_id   = email_data.get("matter_id", "UNKNOWN")
+    category    = email_data.get("category", "UNKNOWN")
+    sender      = email_data.get("sender", "")
+    sender_name = email_data.get("sender_name", "User")
 
     logger.info("=== Processing job: Matter ID=%s | Category=%s ===", matter_id, category)
 
@@ -68,6 +69,8 @@ def process_email_job(email_data: dict) -> None:
             category=category,
             page_text=scraper_result.page_text,
             files=scraper_result.downloaded_files,
+            downloaded_count=len(scraper_result.downloaded_files),
+            sender_name=sender_name,
         )
 
         # ── Step 4: Create zip ────────────────────────────────────────────────

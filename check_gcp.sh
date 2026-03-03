@@ -11,12 +11,13 @@ gcloud config get-value project
 
 # 2. Free Tier & Spot Audit
 echo -e "\n--- Free Tier & Spot Audit ---"
-INSTANCE_NAME=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/name 2>/dev/null)
+INSTANCE_NAME=$(curl -s --connect-timeout 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/name 2>/dev/null)
 
 if [ -n "$INSTANCE_NAME" ]; then
-    ZONE=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $NF}')
-    MACHINE_TYPE=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/machine-type | awk -F/ '{print $NF}')
-    IS_SPOT=$(gcloud compute instances describe "$INSTANCE_NAME" --format="value(scheduling.provisioningModel)")
+    ZONE=$(curl -s --connect-timeout 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $NF}')
+    MACHINE_TYPE=$(curl -s --connect-timeout 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/machine-type | awk -F/ '{print $NF}')
+    IS_SPOT=$(gcloud compute instances describe "$INSTANCE_NAME" --zone="$ZONE" --format="value(scheduling.provisioningModel)")
+    DISK_SIZE=$(gcloud compute instances describe "$INSTANCE_NAME" --zone="$ZONE" --format="value(disks[0].diskSizeGb)")
     
     echo "Instance: $INSTANCE_NAME ($MACHINE_TYPE)"
     echo "Region/Zone: $ZONE"
@@ -35,9 +36,16 @@ if [ -n "$INSTANCE_NAME" ]; then
         echo "⚠️ Machine: NOT ELIGIBLE (Switch to e2-micro)"
     fi
 
+    # Check for Disk Size eligibility
+    if [ -n "$DISK_SIZE" ] && [ "$DISK_SIZE" -le 30 ]; then
+        echo "✅ Disk: ELIGIBLE for Free Tier (${DISK_SIZE}GB <= 30GB)"
+    else
+        echo "⚠️ Disk: NOT ELIGIBLE (Reduce to 30GB or less)"
+    fi
+
     echo "Provisioning: $IS_SPOT (Spot is cheapest if Free Tier limit is exceeded)"
 else
-    echo "Metadata check failed: Run this script inside your VM."
+    echo "Metadata check failed: Are you running this script inside your GCP VM?"
 fi
 
 # 3. Environment Readiness

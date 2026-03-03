@@ -1,5 +1,6 @@
 
 import re
+from email.utils import parseaddr
 from source.category_extractor import get_document_category
 from source.email_sender import send_unknown_category_email
 
@@ -20,6 +21,34 @@ def extract_matter_id(text):
         return match.group(0).replace('-', '').upper()
     
     return None
+
+
+def extract_sender_name(sender: str) -> str:
+    """
+    Best-effort extraction of a human-readable first name from the From address.
+
+    Strategy:
+      1. Parse the display name from "Display Name <email@host>" format.
+         Take the first word of the display name.
+      2. Fall back to the part of the email address before the @ symbol,
+         splitting on dots/underscores/hyphens to get the first token.
+      3. Capitalise the result.
+
+    Examples:
+      "John Smith <j.smith@example.com>" -> "John"
+      "j.smith@example.com"              -> "J"
+      "john_doe@example.com"             -> "John"
+    """
+    display, addr = parseaddr(sender)
+
+    if display:
+        first = display.strip().split()[0]
+        return first.capitalize()
+
+    # Fall back to email prefix
+    local = addr.split("@")[0] if "@" in addr else addr
+    first = re.split(r'[._\-]+', local)[0]
+    return first.capitalize() if first else "User"
 
 def get_email_body(msg):
     """
@@ -68,6 +97,7 @@ def process_and_filter_email(msg, subject, sender):
             "category": category,
             "subject": subject,
             "sender": sender,
+            "sender_name": extract_sender_name(sender),
             "body": body
         }
         
