@@ -105,7 +105,7 @@ async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> Scrap
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
+            browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(accept_downloads=True)
             page = await context.new_page()
 
