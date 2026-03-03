@@ -32,7 +32,7 @@ The system is built using an asynchronous, polling architecture to ensure reliab
 
 To interact with the agent:
 
-1. Send an email to: `[Insert your agent's email address here]`
+1. Send an email to: `thefreedomfightersguild@gmail.com`
 
 2. In the body or subject, specify the Matter Number and Document Type.
 
