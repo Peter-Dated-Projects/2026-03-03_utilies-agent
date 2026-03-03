@@ -56,13 +56,42 @@ async def run_uarb_search(matter_id, doc_type):
         else:
             print(f"Warning: Document type '{doc_type}' not found in selector map.")
 
-        # Give the tab content a moment to refresh
+        # Wait for the table to appear (FileMaker web direct usually has one main data table)
+        try:
+            await page.wait_for_selector("table", timeout=10000)
+        except Exception as e:
+            print("Warning: Table not found within timeout.")
+
+        # Give the tab content a moment to refresh and render rows
         await page.wait_for_timeout(2000)
         
-        print(f"Tab {doc_type} active. Ready for document retrieval.")
+        print(f"Tab {doc_type} active. Searching table for 'GO GET IT' elements...")
         
-        # TODO: Metadata scraping (Title, Dates, Counts)
-        # TODO: Loop through \"GO GET IT\" buttons to download first 10 files
+        # Use exact text selector scoped to the table; Playwright will target the innermost element
+        download_elements = await page.locator('table >> text="GO GET IT"').all()
+        print(f"Found {len(download_elements)} 'GO GET IT' elements.")
+        
+        for i, elem in enumerate(download_elements):
+            # Attempt to extract an href from the element or its ancestors
+            # This avoids hardcoding the exact div/span DOM tree
+            url = await elem.evaluate('''node => {
+                let current = node;
+                while (current && current !== document.body) {
+                    if (current.tagName === 'A' && current.hasAttribute('href')) {
+                        return current.getAttribute('href');
+                    }
+                    if (current.hasAttribute && current.hasAttribute('href')) {
+                        return current.getAttribute('href');
+                    }
+                    current = current.parentNode;
+                }
+                return null;
+            }''')
+            
+            if url:
+                print(f"[{i + 1}] PDF URL found: {url}")
+            else:
+                print(f"[{i + 1}] PDF URL not found directly in DOM (likely uses JS onclick/download).")
         
         # await browser.close()
 
