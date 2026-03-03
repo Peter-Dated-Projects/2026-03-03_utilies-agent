@@ -16,10 +16,15 @@ CATEGORIES = [
 def extract_category_regex(text):
     """
     Attempts to find a matching category strictly using simple regex/substring rules.
+    Matches both singular and plural forms.
     """
     text_lower = text.lower()
     for cat in CATEGORIES:
-        if cat.lower() in text_lower:
+        # Create a singular base by removing trailing 's' if present
+        base_cat = cat[:-1] if cat.endswith('s') else cat
+        # Match the base word with an optional 's' at the end
+        pattern = r'\b' + re.escape(base_cat.lower()) + r'(?:s)?\b'
+        if re.search(pattern, text_lower):
             return cat
     return None
 

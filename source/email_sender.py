@@ -36,11 +36,5 @@ def send_unknown_category_email(to_address, original_subject, matter_id):
     
     msg.set_content(body)
     
-    try:
-        # Example using Gmail SMTP. Update if using a different provider.
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(email_address, password)
-            smtp.send_message(msg)
-            logger.info("Clarification email sent to %s for Matter %s", to_address, matter_id)
-    except Exception as e:
-        logger.error("Failed to send clarification email: %s", e)
+    logger.warning("Mocking Email Send. Would have sent clarification to: %s for Matter: %s", to_address, matter_id)
+    logger.info("Email Content Output:\n" + "="*40 + f"\nSubject: {msg['Subject']}\nFrom: {msg['From']}\nTo: {msg['To']}\n\n{body}\n" + "="*40)

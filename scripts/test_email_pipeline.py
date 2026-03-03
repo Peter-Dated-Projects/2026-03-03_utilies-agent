@@ -40,17 +40,36 @@ def test_filtering():
     msg5 = EmailMessage()
     msg5.set_content("Here is some random file for M-55555.")
     res5 = process_and_filter_email(msg5, "Unknown File", "Sender 5")
-    # This should return None because category is UNKNOWN and an email fired off instead.
     assert res5 is None, f"Expected None for UNKNOWN category, got {res5}"
+    
+    # Test 5: Singular form and improper casing (Exhibit instead of Exhibits, KeY DoCumEnt)
+    msg6 = EmailMessage()
+    msg6.set_content("Attached is the eXhiBit for M-77777.")
+    res6 = process_and_filter_email(msg6, "some KeY DoCumEnt attached", "Sender 6")
+    
+    assert res6 is not None
+    assert res6["matter_id"] == "M77777"
+    # The system returns the official category name from the CATEGORIES list
+    assert res6["category"] == "Key Documents", f"Expected 'Key Documents', got {res6['category']}"
+
+    # Test 6: Another Singular form test in Body
+    msg7 = EmailMessage()
+    msg7.set_content("Here is the transcript for M-88888.")
+    res7 = process_and_filter_email(msg7, "No category here", "Sender 7")
+    
+    assert res7 is not None
+    assert res7["category"] == "Transcripts"
     
     print("Filtering tests passed!")
     
     # testing queue
     if res2: add_to_queue(res2)
     if res4: add_to_queue(res4)
+    if res6: add_to_queue(res6)
+    if res7: add_to_queue(res7)
     
     print("Waiting for queue processing...")
-    time.sleep(5)
+    time.sleep(10)
     print("Test complete.")
 
 if __name__ == "__main__":
