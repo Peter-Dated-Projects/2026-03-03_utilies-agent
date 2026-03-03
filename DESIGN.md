@@ -39,6 +39,11 @@ Kinda weird.
 
 It's been 1 hour and 41 minutes. GG
 
+### UPDATE 4
+
+I gotta scroll, but scrolling is broken.
+so i gotta zoom out. iw ill now zoom out like crazy so 10 docs are always visible.
+
 
 ## Sen-3_email-filtering
 

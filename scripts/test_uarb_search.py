@@ -36,12 +36,11 @@ async def download_from_modal(page, download_dir):
         await download.save_as(file_path)
         print(f"Downloaded: {file_path}")
         
-        # 5. Click the \"Close\" button inside that specific modal
-        await page.locator('.v-button.primary:has-text("Close")').click()
+        # 5. Click the Close button via its stable structural selector
+        await page.click(".v-slot-primary .v-button-primary")
         
-        # 6. Wait for the modality curtain to disappear
-        curtain = page.locator('.v-window-modalitycurtain')
-        await curtain.wait_for(state="hidden", timeout=5000)
+        # 6. Wait for the modality curtain to disappear - CRITICAL before next click
+        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden")
         
         return file_path
     except Exception as e:
@@ -104,50 +103,77 @@ async def run_uarb_search(matter_id, doc_type):
             else:
                 print(f"Warning: Document type '{doc_type}' not found in selector map.")
 
-            # Wait for the "GO GET IT" buttons to become visible instead of relying on the table
-            try:
-                await page.locator('text="GO GET IT"').first.wait_for(state="visible", timeout=1500)
-            except Exception as e:
-                print("Warning: 'GO GET IT' buttons not found within timeout.")
-
-            # Give the tab content an extra moment to fully bind JavaScript event handlers
+            # Give the tab content a moment to fully bind JavaScript event handlers
             await page.wait_for_timeout(3000)
-            
-            print(f"Tab {doc_type} active. Searching for 'GO GET IT' elements...")
-            
-            # Use exact text selector; We don't restrict to 'table' because some document tabs might render differently
-            download_elements = await page.locator('text="GO GET IT"').all()
-            print(f"Found {len(download_elements)} 'GO GET IT' elements.")
-            
-            max_downloads = min(10, len(download_elements))
-            for i in range(max_downloads):
-                print(f"[{i + 1}] Clicking 'GO GET IT' button...")
-                
-                # FileMaker renders its list inside a custom scrollable container div, not the window.
-                # We walk up the DOM to find that overflow container and scroll the button into it.
-                await download_elements[i].evaluate("""node => {
-                    let parent = node.parentElement;
-                    while (parent) {
-                        const style = window.getComputedStyle(parent);
-                        const overflow = style.overflow + style.overflowY;
-                        if (overflow.includes('auto') || overflow.includes('scroll')) {
-                            const rect = node.getBoundingClientRect();
-                            const parentRect = parent.getBoundingClientRect();
-                            const offset = rect.top - parentRect.top - (parentRect.height / 2) + (rect.height / 2);
-                            parent.scrollBy({ top: offset, behavior: 'smooth' });
-                            return;
-                        }
-                        parent = parent.parentElement;
-                    }
-                    // Fallback: standard scrollIntoView
-                    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }""")
-                await page.wait_for_timeout(600) # wait for smooth scroll to settle
-                
-                await download_elements[i].click(delay=100)
-                
-                # Handle the FileMaker modal download
-                await download_from_modal(page, download_dir)
+            print(f"Tab '{doc_type}' active. Starting virtualized scroll-and-scan loop...")
+
+            MAX_DOWNLOADS = 10
+            downloaded_count = 0
+            processed_ids = set()   # Track button IDs already handled
+            consecutive_empty_scrolls = 0  # End-of-list guard
+            MAX_EMPTY_SCROLLS = 5          # Stop after 5 scrolls with no new buttons
+
+            while downloaded_count < MAX_DOWNLOADS:
+                # --- Scan: find all currently rendered "GO GET IT" buttons ---
+                buttons = await page.get_by_role("button", name="GO GET IT").all()
+
+                new_buttons_found = False
+                for btn in buttons:
+                    if downloaded_count >= MAX_DOWNLOADS:
+                        break
+
+                    btn_id = await btn.get_attribute("id")
+
+                    # Skip buttons we've already processed (or ones with no id)
+                    if btn_id is None or btn_id in processed_ids:
+                        continue
+
+                    processed_ids.add(btn_id)
+                    new_buttons_found = True
+                    consecutive_empty_scrolls = 0  # Reset miss counter on any new find
+
+                    print(f"[{downloaded_count + 1}] Clicking 'GO GET IT' (id={btn_id})...")
+                    await btn.click(delay=100)
+
+                    # Download the file from the modal
+                    result = await download_from_modal(page, download_dir)
+
+                    # Defensively dismiss any residual modal/overlay before continuing
+                    try:
+                        close_btn = page.locator(".v-slot-primary .v-button-primary")
+                        if await close_btn.is_visible():
+                            await close_btn.click()
+                        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=500)
+                    except Exception:
+                        pass  # Modal was already gone, continue
+
+                    if result:
+                        downloaded_count += 1
+
+                if downloaded_count >= MAX_DOWNLOADS:
+                    print(f"Reached {MAX_DOWNLOADS} downloads. Done.")
+                    break
+
+                if not new_buttons_found:
+                    consecutive_empty_scrolls += 1
+                    if consecutive_empty_scrolls >= MAX_EMPTY_SCROLLS:
+                        print(f"No new rows after {MAX_EMPTY_SCROLLS} consecutive scrolls. End of list.")
+                        break
+
+                    print(f"No new buttons found (miss #{consecutive_empty_scrolls}). Scrolling via mouse wheel...")
+
+                    # .v-grid-scroller-vertical has width: 0px — it cannot receive pointer events.
+                    # Instead, hover over the visible table wrapper and send a real wheel event.
+                    # FileMaker/Vaadin listens for wheel/scroll events on the visible container,
+                    # not direct scrollTop mutations on the zero-width scroller element.
+                    table_wrapper = page.locator(".v-grid-tablewrapper")
+                    await table_wrapper.hover()
+                    await page.mouse.wheel(0, 200)  # Scroll down ~3 rows (68px each)
+
+                    # Wait for FileMaker to fetch and render the new rows
+                    await page.wait_for_timeout(1500)
+
+            print(f"Finished. Downloaded {downloaded_count} file(s) to '{download_dir}'.")
             
             # await browser.close()
     except Exception as e:
