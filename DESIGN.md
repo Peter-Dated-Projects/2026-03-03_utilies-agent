@@ -32,6 +32,13 @@ But then again, playwrite lets me see what he agent is doing. im sure there's an
 It's been 90minutes since I started.
 
 
+### UPDATE 3
+
+I dislike how the website has us clikc a button, only for us to click another button. 
+Kinda weird.
+
+It's been 1 hour and 41 minutes. GG
+
 
 ## Sen-3_email-filtering
 
