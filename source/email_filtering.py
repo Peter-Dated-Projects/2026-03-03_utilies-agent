@@ -22,6 +22,31 @@ def extract_matter_id(text):
     
     return None
 
+def strip_email_replies(body: str) -> str:
+    """
+    Removes quoted text from email replies (e.g. "On [Date], [Person] wrote:", "From: ...")
+    so we only analyse the user's actual new text.
+    """
+    # Gmail often wraps the sender name/email onto a new line, so we need a multi-line
+    # match that captures everything between "On " and " wrote:"
+    match = re.search(r'(?i)^On\s+[\s\S]*?wrote:\s*$', body, re.MULTILINE)
+    if match:
+        body = body[:match.start()].strip()
+
+    # Remaining common markers for forwards and other email clients
+    markers = [
+        r"(?im)^From:\s+.*$",
+        r"(?im)^_{10,}$",  # Many underscores usually separate Outlook forwards
+        r"(?im)^\s*-{3,}\s*Original Message\s*-{3,}\s*$"
+    ]
+    
+    for marker in markers:
+        match = re.search(marker, body)
+        if match:
+            # Cut off the body right before the first marker is found
+            body = body[:match.start()].strip()
+            
+    return body
 
 def extract_sender_name(sender: str) -> str:
     """
@@ -86,7 +111,8 @@ def process_and_filter_email(msg, subject, sender):
         matter_id = extract_matter_id(body)
         
     if matter_id:
-        category = get_document_category(subject, body)
+        clean_body = strip_email_replies(body)
+        category = get_document_category(subject, clean_body)
         
         if category == "UNKNOWN":
             send_unknown_category_email(sender, subject, matter_id)

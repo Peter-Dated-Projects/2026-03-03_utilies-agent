@@ -3,7 +3,7 @@ import imaplib
 import email
 from email.header import decode_header
 from source.logger import get_logger
-from source.email_filtering import process_and_filter_email
+from source.email_filtering import process_and_filter_email, get_email_body
 from source.email_handler import add_to_queue
 
 logger = get_logger(__name__)
@@ -46,7 +46,14 @@ def check_inbox(imap):
                                 subject = "(No Subject)"
                                 
                             sender = msg.get("From", "(Unknown Sender)")
+                            body = get_email_body(msg)
+                            
                             logger.info("  -> From: %s | Subject: %s", sender, subject)
+                            logger.info(
+                                "  -> Body:\n" + "=" * 40 +
+                                f"\n{body}\n" +
+                                "=" * 40
+                            )
                             
                             email_data = process_and_filter_email(msg, subject, sender)
                             if email_data:
