@@ -10,9 +10,12 @@ from source.logger import get_logger
 logger = get_logger(__name__)
 
 
+MAX_PDF_PAGES = 3  # Only parse the first N pages of each PDF
+
+
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extract all text from a PDF file.
+    Extract text from the first MAX_PDF_PAGES pages of a PDF file.
 
     Args:
         file_path: Absolute or relative path to the PDF file.
@@ -25,7 +28,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         import pdfplumber
         with pdfplumber.open(file_path) as pdf:
             pages_text = []
-            for page in pdf.pages:
+            for page in pdf.pages[:MAX_PDF_PAGES]:
                 text = page.extract_text()
                 if text:
                     pages_text.append(text)
@@ -43,7 +46,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
         pages_text = []
-        for page in reader.pages:
+        for page in reader.pages[:MAX_PDF_PAGES]:
             text = page.extract_text()
             if text:
                 pages_text.append(text)
