@@ -6,6 +6,15 @@ So I finally got the downloading system to work.
 Joining everything together will be super easy.
 
 
+### UPDATE 1
+
+so i finished everything
+but there's a bug
+
+email file upload size can't exceed certain sizees, and we need to make sure PDFs downloaded won't explode that limit.
+
+so i'm gonna remove them from the zip file.
+
 
 ## SEN-4_website-interaction
 

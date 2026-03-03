@@ -92,6 +92,12 @@ def send_result_email(
     msg["To"] = to_address
     msg.set_content(summary)
 
+    logger.info(
+        "Result Email Content Output:\n" + "=" * 60 +
+        f"\nSubject: {msg['Subject']}\nFrom: {msg['From']}\nTo: {msg['To']}\n\n{summary}\n" +
+        "=" * 60
+    )
+
     # Attach the zip file
     try:
         with open(zip_path, "rb") as f:

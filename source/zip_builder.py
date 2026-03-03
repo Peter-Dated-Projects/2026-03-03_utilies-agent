@@ -10,8 +10,11 @@ from source.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Gmail's limit is 25MB total. We limit uncompressed contents to 20MB to be safe,
+# accounting for zip headers and base64 email encoding overhead.
+MAX_ZIP_CONTENT_BYTES = 20 * 1024 * 1024
 
-def create_zip(download_dir: str, matter_id: str, category: str) -> str:
+def create_zip(download_dir: str, matter_id: str, category: str) -> tuple[str, list[str]]:
     """
     Zip the contents of download_dir into a single archive.
 
@@ -24,7 +27,7 @@ def create_zip(download_dir: str, matter_id: str, category: str) -> str:
         category:     Used to name the output zip file.
 
     Returns:
-        Absolute path to the created zip file.
+        Tuple of (Absolute path to the created zip file, list of filenames that were skipped due to size).
 
     Raises:
         FileNotFoundError: If download_dir does not exist.
@@ -49,14 +52,31 @@ def create_zip(download_dir: str, matter_id: str, category: str) -> str:
     parent_dir = os.path.dirname(download_dir)
     zip_path = os.path.join(parent_dir, zip_name)
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for filename in all_files:
-            full_path = os.path.join(download_dir, filename)
-            zf.write(full_path, arcname=filename)
-            logger.debug("Zipped: %s", filename)
+    # Sort files by size (smallest first) to fit as many as possible
+    file_sizes = []
+    for filename in all_files:
+        full_path = os.path.join(download_dir, filename)
+        file_sizes.append((filename, full_path, os.path.getsize(full_path)))
+    
+    file_sizes.sort(key=lambda x: x[2])
 
+    skipped_files = []
+    total_bytes = 0
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, full_path, size in file_sizes:
+            if total_bytes + size > MAX_ZIP_CONTENT_BYTES:
+                logger.warning("Skipping '%s' (%d bytes) to stay under zip size limit.", filename, size)
+                skipped_files.append(filename)
+                continue
+
+            zf.write(full_path, arcname=filename)
+            total_bytes += size
+            logger.debug("Zipped: %s (%d bytes)", filename, size)
+
+    included_count = len(all_files) - len(skipped_files)
     logger.info(
-        "Created zip '%s' with %d file(s) for Matter ID: %s",
-        zip_path, len(all_files), matter_id
+        "Created zip '%s' with %d/%d file(s) (Total: %d bytes) for Matter ID: %s",
+        zip_path, included_count, len(all_files), total_bytes, matter_id
     )
-    return zip_path
+    return zip_path, skipped_files

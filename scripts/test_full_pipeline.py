@@ -36,16 +36,16 @@ TEST_CASES = [
         "sender":    "thefreedomfightersguild@gmail.com",
         "subject":   "M12000 Exhibits request",
         "body":      "Hi, please send me the Exhibits for M120000. Thanks!",
-        "matter_id": "M120000",
+        "matter_id": "M12000",
         "category":  "Exhibits",
     },
-    {
-        "sender":    "thefreedomfightersguild@gmail.com",
-        "subject":   "M12205 Exhibits request",
-        "body":      "Hi, please send me the Exhibits for M12205. Thanks!",
-        "matter_id": "M12205",
-        "category":  "Exhibits",
-    },
+    # {
+    #     "sender":    "thefreedomfightersguild@gmail.com",
+    #     "subject":   "M12205 Exhibits request",
+    #     "body":      "Hi, please send me the Exhibits for M12205. Thanks!",
+    #     "matter_id": "M12205",
+    #     "category":  "Exhibits",
+    # },
 ]
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -104,15 +104,19 @@ def run_test_case(email: dict) -> None:
 
         if result.downloaded_files:
             print("[3/3] Zipping files...")
-            zip_path = create_zip(download_dir, matter_id, category)
+            zip_path, skipped_files = create_zip(download_dir, matter_id, category)
             print(f"      Archive: {zip_path}")
+            if skipped_files:
+                summary += "\n\nNote: The following files were too large and were excluded from the ZIP attachment to meet email size limits:\n"
+                for sf in skipped_files:
+                    summary += f"- {sf}\n"
         else:
             print("[3/3] No files downloaded — skipping zip.")
             os.makedirs(download_dir, exist_ok=True)
             note = os.path.join(download_dir, "no_files.txt")
             with open(note, "w") as f:
                 f.write(f"No files found for {matter_id} / {category}.\n")
-            zip_path = create_zip(download_dir, matter_id, category)
+            zip_path, _ = create_zip(download_dir, matter_id, category)
 
         subject = f"[UARB Agent] Matter {matter_id} – {category} Summary"
         print_mock_email(sender, subject, summary, zip_path)

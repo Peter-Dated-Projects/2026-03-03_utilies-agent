@@ -77,7 +77,11 @@ def process_email_job(email_data: dict) -> None:
         if scraper_result.downloaded_files:
             logger.info("[3/5] Creating zip archive...")
             try:
-                zip_path = create_zip(download_dir, matter_id, category)
+                zip_path, skipped_files = create_zip(download_dir, matter_id, category)
+                if skipped_files:
+                    summary += "\n\nNote: The following files were too large and were excluded from the ZIP attachment to meet email size limits:\n"
+                    for sf in skipped_files:
+                        summary += f"- {sf}\n"
             except Exception as e:
                 logger.error("Failed to create zip: %s", e)
                 zip_path = None
@@ -100,7 +104,7 @@ def process_email_job(email_data: dict) -> None:
                         f"under category: {category}.\n"
                     )
                 try:
-                    zip_path = create_zip(download_dir, matter_id, category)
+                    zip_path, _ = create_zip(download_dir, matter_id, category)
                     success = send_result_email(sender, matter_id, category, summary, zip_path)
                 except Exception as e:
                     logger.error("Could not send fallback email: %s", e)
