@@ -13,11 +13,16 @@ def process_email_job(email_data):
     """
     matter_id = email_data.get("matter_id")
     subject = email_data.get("subject")
+    category = email_data.get("category")
     
     logger.info("Handling email for Matter ID: %s | Subject: %s", matter_id, subject)
     # Simulate processing time
     time.sleep(2)
-    logger.info("Finished handling email for Matter ID: %s", matter_id)
+    logger.info(
+        "Finished handling email for Matter ID: %s %s", 
+        matter_id, 
+        f"\n\tMatter ID: {matter_id}\n\tCategory: {category}"
+    )
 
 def worker():
     """

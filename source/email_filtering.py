@@ -1,5 +1,7 @@
 
 import re
+from source.category_extractor import get_document_category
+from source.email_sender import send_unknown_category_email
 
 def extract_matter_id(text):
     """
@@ -55,8 +57,15 @@ def process_and_filter_email(msg, subject, sender):
         matter_id = extract_matter_id(body)
         
     if matter_id:
+        category = get_document_category(subject, body)
+        
+        if category == "UNKNOWN":
+            send_unknown_category_email(sender, subject, matter_id)
+            return None
+            
         return {
             "matter_id": matter_id,
+            "category": category,
             "subject": subject,
             "sender": sender,
             "body": body
