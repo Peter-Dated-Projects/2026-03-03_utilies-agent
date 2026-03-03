@@ -3,8 +3,11 @@ import imaplib
 import email
 from email.header import decode_header
 from source.logger import get_logger
+from source.email_filtering import process_and_filter_email
+from source.email_handler import add_to_queue
 
 logger = get_logger(__name__)
+
 
 
 def check_inbox(imap):
@@ -44,6 +47,13 @@ def check_inbox(imap):
                                 
                             sender = msg.get("From", "(Unknown Sender)")
                             logger.info("  -> From: %s | Subject: %s", sender, subject)
+                            
+                            email_data = process_and_filter_email(msg, subject, sender)
+                            if email_data:
+                                add_to_queue(email_data)
+                                logger.info("  => Relevant email found and queued for Matter ID: %s", email_data["matter_id"])
+                            else:
+                                logger.debug("  => Irrelevant email, ignored.")
         else:
             logger.debug("No new messages.")
 
