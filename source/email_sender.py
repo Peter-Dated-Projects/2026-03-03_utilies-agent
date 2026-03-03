@@ -52,12 +52,13 @@ def send_unknown_category_email(to_address: str, original_subject: str, matter_i
 
     msg.set_content(body)
 
-    logger.warning("Mocking Email Send. Would have sent clarification to: %s for Matter: %s", to_address, matter_id)
-    logger.info(
-        "Email Content Output:\n" + "=" * 40 +
-        f"\nSubject: {msg['Subject']}\nFrom: {msg['From']}\nTo: {msg['To']}\n\n{body}\n" +
-        "=" * 40
-    )
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(email_address, password)
+            smtp.send_message(msg)
+        logger.info("Sent clarification email to: %s for Matter: %s", to_address, matter_id)
+    except Exception as e:
+        logger.error("Failed to send clarification email to %s: %s", to_address, e)
 
 
 def send_result_email(
@@ -98,16 +99,16 @@ def send_result_email(
         "=" * 60
     )
 
-    # Attach the zip file
-    try:
-        with open(zip_path, "rb") as f:
-            zip_data = f.read()
-        zip_filename = os.path.basename(zip_path)
-        msg.add_attachment(zip_data, maintype="application", subtype="zip", filename=zip_filename)
-        logger.debug("Attached zip: %s (%d bytes)", zip_filename, len(zip_data))
-    except Exception as e:
-        logger.error("Failed to read zip file '%s': %s", zip_path, e)
-        return False
+    if zip_path:
+        try:
+            with open(zip_path, "rb") as f:
+                zip_data = f.read()
+            zip_filename = os.path.basename(zip_path)
+            msg.add_attachment(zip_data, maintype="application", subtype="zip", filename=zip_filename)
+            logger.debug("Attached zip: %s (%d bytes)", zip_filename, len(zip_data))
+        except Exception as e:
+            logger.error("Failed to read zip file '%s': %s", zip_path, e)
+            return False
 
     # Send via SMTP
     try:

@@ -94,21 +94,8 @@ def process_email_job(email_data: dict) -> None:
             if zip_path:
                 success = send_result_email(sender, matter_id, category, summary, zip_path)
             else:
-                # No zip — send summary-only email (re-use send_result_email with a placeholder path)
-                # Build a minimal zip containing just a README note
-                note_path = os.path.join(download_dir, "no_files.txt")
-                os.makedirs(download_dir, exist_ok=True)
-                with open(note_path, "w") as f:
-                    f.write(
-                        f"No downloadable files were found for Matter ID: {matter_id} "
-                        f"under category: {category}.\n"
-                    )
-                try:
-                    zip_path, _ = create_zip(download_dir, matter_id, category)
-                    success = send_result_email(sender, matter_id, category, summary, zip_path)
-                except Exception as e:
-                    logger.error("Could not send fallback email: %s", e)
-                    success = False
+                # No zip to attach — just send the summary text (which now handles the 0-file case cleanly).
+                success = send_result_email(sender, matter_id, category, summary, None)
 
             if success:
                 logger.info("[4/5] Email delivered successfully.")
