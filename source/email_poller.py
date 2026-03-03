@@ -50,8 +50,11 @@ def check_inbox(imap):
                             
                             email_data = process_and_filter_email(msg, subject, sender)
                             if email_data:
-                                add_to_queue(email_data)
-                                logger.info("  => Relevant email found and queued for Matter ID: %s", email_data["matter_id"])
+                                if email_data.get("status") == "missing_category":
+                                    logger.info("  => Category unknown. Clarified with sender for Matter ID: %s", email_data["matter_id"])
+                                else:
+                                    add_to_queue(email_data)
+                                    logger.info("  => Relevant email found and queued for Matter ID: %s", email_data["matter_id"])
                             else:
                                 logger.debug("  => Irrelevant email, ignored.")
         else:

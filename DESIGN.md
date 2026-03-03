@@ -12,8 +12,24 @@ because it doesn't matter what i pick. ai will make it easy enough to use.
 
 Will update later when finished implementing base.
 
+### UPDATE 1
 
+Forgot to say, in SEN-3 i stopped the bot from being able to send emails back. i want to be able to not spam myself
 
+### UPDATE 2
+
+So I spun up 2 agents. One is currently updating the email validity detection system
+- if we find a matter ID in either subject line or content, the email is valid.
+- if we don't find a category, request clarification
+- else, the category exists and we can proceed
+
+The other agent is currently working on the website interaction
+
+We're using playwrite, but now i'm wondering if simply using bs4 and requests would've been easier...
+
+But then again, playwrite lets me see what he agent is doing. im sure there's an option to hide hte browser as well so.
+
+It's been 90minutes since I started.
 
 
 

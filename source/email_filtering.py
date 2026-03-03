@@ -61,7 +61,7 @@ def process_and_filter_email(msg, subject, sender):
         
         if category == "UNKNOWN":
             send_unknown_category_email(sender, subject, matter_id)
-            return None
+            return {"matter_id": matter_id, "status": "missing_category"}
             
         return {
             "matter_id": matter_id,
