@@ -65,7 +65,7 @@ async def _download_from_modal(page: Page, download_dir: str) -> str | None:
 
         # Close the modal
         await page.click(".v-slot-primary .v-button-primary")
-        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden")
+        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=5000)
 
         return file_path
     except Exception as e:
@@ -81,16 +81,20 @@ async def _download_from_modal(page: Page, download_dir: str) -> str | None:
         return None
 
 
-async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> ScraperResult:
+async def scrape_uarb(matter_id: str, category: str, download_dir: str, max_downloads: int = 10) -> ScraperResult:
     """
     Navigate to the UARB portal, enter the matter ID, switch to the correct
-    category tab, capture the raw page text, and download all available files.
+    category tab, capture the raw page text, and download up to max_downloads files.
+
+    Uses a scroll-and-scan loop with JS-dispatched mouse events and JS scrollTop
+    mutation to handle Vaadin's virtualised row rendering in headless mode.
 
     Args:
-        matter_id:    Standardised matter ID, e.g. "M12205".
-        category:     One of the five document categories.
-        download_dir: Directory where downloaded files will be saved.
-                      Will be created if it does not exist.
+        matter_id:     Standardised matter ID, e.g. "M12205".
+        category:      One of the five document categories.
+        download_dir:  Directory where downloaded files will be saved.
+                       Will be created if it does not exist.
+        max_downloads: Maximum number of files to download (default: 10).
 
     Returns:
         A ScraperResult dataclass.
@@ -106,7 +110,11 @@ async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> Scrap
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(accept_downloads=True)
+            context = await browser.new_context(
+                accept_downloads=True,
+                # FileMaker WebDirect needs a large viewport to render correctly in headless mode
+                viewport={"width": 1440, "height": 900},
+            )
             page = await context.new_page()
 
             logger.info("Navigating to UARB portal for Matter ID: %s, Category: %s", matter_id, category)
@@ -131,14 +139,8 @@ async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> Scrap
             await page.wait_for_selector(target_tab_id)
             await page.click(target_tab_id)
 
-            # Wait for GO GET IT buttons to appear (or timeout gracefully)
-            try:
-                await page.locator('text="GO GET IT"').first.wait_for(state="visible", timeout=5000)
-            except Exception:
-                logger.warning("No 'GO GET IT' buttons appeared for %s / %s.", matter_id, category)
-
-            # Extra wait for JS event handlers to bind
             await page.wait_for_timeout(3000)
+            logger.info("Tab '%s' active. Starting scroll-and-scan loop...", category)
 
             # ── Capture raw page text BEFORE downloading ──────────────────────
             try:
@@ -147,45 +149,104 @@ async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> Scrap
             except Exception as e:
                 logger.warning("Could not capture page text: %s", e)
 
-            # ── Download files ────────────────────────────────────────────────
-            download_elements = await page.locator('text="GO GET IT"').all()
-            logger.info("Found %d 'GO GET IT' buttons.", len(download_elements))
+            # ── Scroll-and-scan download loop ─────────────────────────────────
+            downloaded_count = 0
+            processed_ids: set[str] = set()
+            consecutive_empty_scrolls = 0
+            MAX_EMPTY_SCROLLS = 5
+            SCROLL_STEP = 204  # 3 rows × 68 px each
+            current_scroll_top = 0
 
-            for i, element in enumerate(download_elements):
-                logger.info("[%d/%d] Clicking 'GO GET IT'...", i + 1, len(download_elements))
-                await element.click(delay=100)
-                file_path = await _download_from_modal(page, download_dir)
-                if file_path:
-                    result.downloaded_files.append(file_path)
-
-                # Dismiss any residual overlay
+            while downloaded_count < max_downloads:
+                # Guard: dismiss any lingering modal curtain before scanning
                 try:
-                    close_btn = page.locator(".v-slot-primary .v-button-primary")
-                    if await close_btn.is_visible():
-                        await close_btn.click()
-                    await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=2000)
+                    curtain = page.locator(".v-window-modalitycurtain")
+                    if await curtain.is_visible():
+                        close_btn = page.locator(".v-slot-primary .v-button-primary")
+                        if await close_btn.is_visible():
+                            await close_btn.click()
+                        await curtain.wait_for(state="hidden", timeout=3000)
                 except Exception:
                     pass
 
-                # Scroll the next button into view inside FileMaker's scroll container
-                if i + 1 < len(download_elements):
-                    await download_elements[i + 1].evaluate("""node => {
-                        let parent = node.parentElement;
-                        while (parent) {
-                            const style = window.getComputedStyle(parent);
-                            const overflow = style.overflow + style.overflowY;
-                            if (overflow.includes('auto') || overflow.includes('scroll')) {
-                                const rect = node.getBoundingClientRect();
-                                const parentRect = parent.getBoundingClientRect();
-                                const offset = rect.top - parentRect.top - (parentRect.height / 2) + (rect.height / 2);
-                                parent.scrollBy({ top: offset, behavior: 'smooth' });
-                                return;
-                            }
-                            parent = parent.parentElement;
+                # Scan: find all currently rendered "GO GET IT" buttons
+                buttons = await page.get_by_role("button", name="GO GET IT").all()
+
+                new_buttons_found = False
+                for btn in buttons:
+                    if downloaded_count >= max_downloads:
+                        break
+
+                    btn_id = await btn.get_attribute("id")
+                    if btn_id is None or btn_id in processed_ids:
+                        continue
+
+                    processed_ids.add(btn_id)
+                    new_buttons_found = True
+                    consecutive_empty_scrolls = 0
+
+                    logger.info("[%d/%d] Clicking 'GO GET IT' (id=%s)...", downloaded_count + 1, max_downloads, btn_id)
+
+                    # Dispatch mousedown→mouseup→click via JS.
+                    # Required in headless mode: Vaadin listens on mousedown, and elements
+                    # outside the viewport cannot receive Playwright's normal .click().
+                    await page.evaluate("""
+                        (id) => {
+                            const el = document.getElementById(id);
+                            if (!el) return;
+                            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                                el.dispatchEvent(new MouseEvent(type, {
+                                    bubbles: true, cancelable: true,
+                                    view: window, buttons: 1
+                                }));
+                            });
                         }
-                        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }""")
-                    await page.wait_for_timeout(600)
+                    """, btn_id)
+
+                    file_path = await _download_from_modal(page, download_dir)
+
+                    # Defensive dismissal in case modal close didn't fully complete
+                    try:
+                        close_btn = page.locator(".v-slot-primary .v-button-primary")
+                        if await close_btn.is_visible():
+                            await close_btn.click()
+                        await page.locator(".v-window-modalitycurtain").wait_for(state="hidden", timeout=3000)
+                    except Exception:
+                        pass
+
+                    if file_path:
+                        result.downloaded_files.append(file_path)
+                        downloaded_count += 1
+
+                if downloaded_count >= max_downloads:
+                    logger.info("Reached download cap of %d. Stopping.", max_downloads)
+                    break
+
+                if not new_buttons_found:
+                    consecutive_empty_scrolls += 1
+                    if consecutive_empty_scrolls >= MAX_EMPTY_SCROLLS:
+                        logger.info(
+                            "No new rows after %d consecutive scrolls. End of list.", MAX_EMPTY_SCROLLS
+                        )
+                        break
+
+                    logger.debug(
+                        "No new buttons (miss #%d). Advancing virtual scroll by %d px...",
+                        consecutive_empty_scrolls, SCROLL_STEP,
+                    )
+                    # Directly mutate scrollTop on Vaadin's internal scroller and fire a
+                    # scroll event so its virtual row engine fetches the next batch of rows.
+                    current_scroll_top += SCROLL_STEP
+                    await page.evaluate("""
+                        (scrollTop) => {
+                            const scroller = document.querySelector('.v-grid-scroller-vertical');
+                            if (scroller) {
+                                scroller.scrollTop = scrollTop;
+                                scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+                            }
+                        }
+                    """, current_scroll_top)
+                    await page.wait_for_timeout(1500)
 
             await browser.close()
 
@@ -199,9 +260,9 @@ async def scrape_uarb(matter_id: str, category: str, download_dir: str) -> Scrap
     return result
 
 
-def run_scrape_sync(matter_id: str, category: str, download_dir: str) -> ScraperResult:
+def run_scrape_sync(matter_id: str, category: str, download_dir: str, max_downloads: int = 10) -> ScraperResult:
     """
     Synchronous entry-point — runs the async scraper in a new event loop.
     Useful when calling from a non-async context (e.g. the worker thread).
     """
-    return asyncio.run(scrape_uarb(matter_id, category, download_dir))
+    return asyncio.run(scrape_uarb(matter_id, category, download_dir, max_downloads))

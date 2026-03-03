@@ -1,5 +1,11 @@
 # Design Logs / Thought Process while working on this project
 
+## SEN-5_connect-everything
+
+So I finally got the downloading system to work.
+Joining everything together will be super easy.
+
+
 
 ## SEN-4_website-interaction
 

@@ -27,7 +27,7 @@ SYSTEM_PROMPT = (
     "Always present information in plain English. Focus on key facts, dates, parties, and conclusions."
 )
 
-_MAX_TEXT_CHARS = 12_000  # Truncate individual file text to stay within context limits
+_MAX_TEXT_CHARS = 2_000  # Truncate individual file text to stay within context limits
 
 
 def _build_user_message(
