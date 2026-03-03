@@ -28,7 +28,7 @@ def send_unknown_category_email(to_address: str, original_subject: str, matter_i
     Sends an email to the user indicating the category could not be determined.
     Currently mocked — logs the email content without actually sending via SMTP.
     """
-    email_address, _ = _get_smtp_credentials()
+    email_address, password = _get_smtp_credentials()
     if not email_address:
         return
 
