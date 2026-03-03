@@ -7,6 +7,7 @@ from source.logger import get_logger
 logger = get_logger(__name__)
 
 
+
 def check_inbox(imap):
     """Check the inbox for unseen messages."""
     status, _ = imap.select("INBOX")
