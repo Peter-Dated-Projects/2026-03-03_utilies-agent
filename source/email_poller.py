@@ -65,7 +65,8 @@ def check_inbox(imap):
                             else:
                                 logger.debug("  => Irrelevant email, ignored.")
         else:
-            logger.debug("No new messages.")
+            # logger.debug("No new messages.")
+            pass
 
 def start_polling(email_address, password, poll_interval=60):
     """Continuously poll for new emails."""
